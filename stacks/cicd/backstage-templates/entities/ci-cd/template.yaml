@@ -182,29 +182,6 @@ spec:
         values:
           name: ${{parameters.serviceName}}
           repoHost: ${{parameters.repoHost}}
-    
-    - id: wait-for-provisioner
-      name: Wait for provisioner workflow to be available
-      action: debug:wait
-      input:
-        seconds: 70
-    
-    - id: run-provisioner-workflow
-      name: Invoke Provisioner Workflow
-      action: http:backstage:request
-      input:
-        path: '/proxy/provisioner/argo-events/${{parameters.serviceName}}-provisioner'
-        method: POST
-        headers: 
-          content-type: 'application/json'
-        body:
-          {
-            "commits": [
-              {
-                "modified": ["provisioner.yaml"]
-              }
-            ]
-          }
 
     - id: register
       name: Register

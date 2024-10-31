@@ -512,25 +512,6 @@ spec:
                             echo "Webhook is already exists"
                           fi
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: "${{values.name}}-provisioner-webhook-es-svc"
-  namespace: ${{values.name}}
-  labels:
-    app: argo-events
-    app.kubernetes.io/name: argo-events
-    app.kubernetes.io/instance: my-argo-events
-spec:
-  ports:
-  - port: 12000
-    protocol: TCP
-    targetPort: 12000
-  selector:
-    eventsource-name: "${{values.name}}-provisioner"
-  type: ClusterIP
-
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -548,7 +529,7 @@ spec:
         paths:
           - backend:
               service:
-                name: "${{values.name}}-provisioner-webhook-es-svc"
+                name: "${{values.name}}-provisioner-eventsource-svc"
                 port:
                   number: 12000
             path: /argo-events/${{values.name}}-provisioner(/|$)(.*)
@@ -558,8 +539,36 @@ spec:
         paths:
           - backend:
               service:
-                name: "${{values.name}}-provisioner-webhook-es-svc"
+                name: "${{values.name}}-provisioner-eventsource-svc"
                 port:
                   number: 12000
             path: /argo-events/${{values.name}}-provisioner(/|$)(.*)
             pathType: ImplementationSpecific
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: wait-and-invoke-provisioner
+  namespace: ${{values.name}}
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: bash
+          image: alpine:3.20
+          command: ["/bin/sh"]
+          args:
+            - -c
+            - >-
+              set -x &&
+              apk add curl &&
+              while true; do
+                status=$(curl -s -k -w "%{http_code}" -o /dev/null -d '{ "commits": [ { "modified": ["provisioner.yaml"]}]}' -H "Content-Type: application/json" -X POST ${{values.name}}-provisioner-eventsource-svc:12000/)
+                if [ "$status" -eq '200' ]; then
+                  echo "Success - got HTTP 200"
+                  break
+                fi
+                echo "Got status $status, retrying in 10s..."
+                sleep 10
+              done
