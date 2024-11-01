@@ -20,6 +20,20 @@ metadata:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
+  name: default-role-binding
+  namespace: ${{values.name}}
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: ${{values.name}}
+roleRef:
+  kind: ClusterRole
+  name: argo-aggregate-to-view
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
   name: operate-workflow-sa-binding
   namespace: ${{values.name}}
 subjects:
@@ -556,7 +570,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: bash
-          image: alpine:3.20
+          image: alpine/k8s:1.31.0
           command: ["/bin/sh"]
           args:
             - -c
@@ -567,7 +581,11 @@ spec:
                 status=$(curl -s -k -w "%{http_code}" -o /dev/null -d '{ "commits": [ { "modified": ["provisioner.yaml"]}]}' -H "Content-Type: application/json" -X POST ${{values.name}}-provisioner-eventsource-svc:12000/)
                 if [ "$status" -eq '200' ]; then
                   echo "Success - got HTTP 200"
-                  break
+                  sleep 2
+                  count=$(kubectl get workflows -l entity-id=${{values.name}},workflows.argoproj.io/phase=Running --no-headers -n ${{values.name}}|wc -l)
+                  if [ "$count" -gt '0' ]; then
+                    break 
+                  fi
                 fi
                 echo "Got status $status, retrying in 10s..."
                 sleep 10
